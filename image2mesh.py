@@ -98,10 +98,9 @@ class MeshConverter:
         self.scale = scale
         self.base_stem = self.input_glb.stem
         # 初期サブフォルダは入力ファイルの stem そのまま
-        self.subdir = self.input_glb.parent / self.base_stem
-        self.subdir.mkdir(exist_ok=True)
         self.output_type = output_type.lower()  # "obj" または "stl"
-        self.output_path = self.subdir / (self.base_stem + f".{self.output_type}")
+        self.subdir = None  # 初期化のみ。実際の決定は _update_output_name に移動
+        self.output_path = None
 
     def convert(self):
         print(f"Converting mesh from: {safe_relpath(self.input_glb)}")
@@ -210,7 +209,6 @@ class MeshConverter:
             self.subdir = self.input_glb.parent / new_stem
         else:
             new_stem = f"{self.base_stem}_faces{face_count}"
-            # サブフォルダは元の stem 名のまま
             self.subdir = self.input_glb.parent / self.base_stem
         self.subdir.mkdir(exist_ok=True)
         self.output_path = self.subdir / (new_stem + f".{self.output_type}")
