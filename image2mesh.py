@@ -62,6 +62,7 @@ class Image2MeshConverter:
     def _load_mesh(self):
         try:
             mesh = trimesh.load(str(self.glb_output), force="mesh")
+            # --input モードは常にテクスチャを除去する
             if hasattr(mesh.visual, "material") and mesh.visual.material is not None:
                 mesh.visual.material.image = None
             if hasattr(mesh.visual, "uv"):
@@ -93,10 +94,10 @@ class MeshConverter:
         self.target_faces = target_faces
         self.scale = scale
         self.base_stem = self.input_glb.stem
-        # 初期サブフォルダは入力ファイル名の stem そのまま
+        # サブフォルダはデフォルトは入力ファイル名の stem のまま
         self.subdir = self.input_glb.parent / self.base_stem
         self.subdir.mkdir(exist_ok=True)
-        self.output_type = output_type.lower()  # "obj" または "stl"
+        self.output_type = output_type.lower()  # "obj" or "stl"
         self.output_path = self.subdir / (self.base_stem + f".{self.output_type}")
 
     def convert(self):
@@ -117,10 +118,15 @@ class MeshConverter:
     def _load_mesh(self):
         try:
             mesh = trimesh.load(str(self.input_glb), force="mesh")
-            if hasattr(mesh.visual, "material") and mesh.visual.material is not None:
-                mesh.visual.material.image = None
-            if hasattr(mesh.visual, "uv"):
-                mesh.visual.uv = None
+            # --convert モード：faces 指定がない場合はテクスチャを保持する
+            if self.target_faces is not None:
+                if (
+                    hasattr(mesh.visual, "material")
+                    and mesh.visual.material is not None
+                ):
+                    mesh.visual.material.image = None
+                if hasattr(mesh.visual, "uv"):
+                    mesh.visual.uv = None
             return mesh
         except Exception as e:
             raise RuntimeError(f"Error loading mesh: {e}")
@@ -188,8 +194,8 @@ class MeshConverter:
             new_stem = f"{self.base_stem}_faces{self.target_faces}"
             self.subdir = self.input_glb.parent / new_stem
         else:
-            # フォルダ名は元の stem のままで、ファイル名に face_count を付加
             new_stem = f"{self.base_stem}_faces{face_count}"
+            # サブフォルダ名は元の stem のまま
             self.subdir = self.input_glb.parent / self.base_stem
         self.subdir.mkdir(exist_ok=True)
         self.output_path = self.subdir / (new_stem + f".{self.output_type}")
@@ -209,7 +215,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Hunyuan3D-2 の 3D メッシュ生成・変換ツール。\n"
         "・--input: 画像からメッシュ生成。GLBはカレントフォルダに、OBJは入力ファイル名のサブフォルダに保存します。\n"
-        "・--convert: 既存GLBを変換・簡略化。--faces 指定時は decimation、指定しない場合は変換のみで実際の面数をファイル名に反映します。\n"
+        "・--convert: 既存GLBを変換・簡略化します。\n"
+        "   --faces 指定時は decimation を行い、出力フォルダ・ファイル名に '_faces{値}' を付加します。\n"
+        "   --faces 未指定時は変換のみを行い、実際の面数をOBJファイル名に反映します。\n"
         "--scale: 単位変換 (例: メートル→mm、デフォルト1000)。"
     )
     group = parser.add_mutually_exclusive_group(required=True)
@@ -232,7 +240,7 @@ def main():
         "--faces",
         type=int,
         default=None,
-        help="目標面数 (例: 10000)。指定時は decimation、指定しない場合は実際の面数を使用。",
+        help="目標面数 (例: 10000)。指定時は decimation、未指定時は実際の面数を使用。",
     )
     parser.add_argument(
         "--scale",
