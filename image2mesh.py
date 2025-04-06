@@ -151,6 +151,7 @@ class MeshConverter:
         try:
             mesh.export(str(self.output_path))
             print(f"Mesh saved as: {safe_relpath(self.output_path)}")
+            print(f"Vertices: {len(mesh.vertices)}, Faces: {len(mesh.faces)}")
         except Exception as e:
             print(f"Error exporting mesh: {e}")
 
@@ -217,6 +218,9 @@ class MeshConverter:
         try:
             ms.save_current_mesh(str(self.output_path))
             print(f"Mesh saved as: {safe_relpath(self.output_path)}")
+            print(
+                f"Vertices: {ms.current_mesh().vertex_number()}, Faces: {ms.current_mesh().face_number()}"
+            )
         except Exception as e:
             raise RuntimeError(f"Error exporting final mesh: {e}")
 
