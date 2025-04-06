@@ -24,7 +24,10 @@ class Image2MeshConverter:
     def __init__(self, input_path: Path):
         self.input_path = input_path.resolve()
         self.glb_output = self.input_path.with_suffix(".glb")
-        self.obj_output = self.input_path.with_suffix(".obj")
+        # 出力 OBJ は input の stem 名のサブフォルダ内に保存
+        self.subdir = self.input_path.parent / self.input_path.stem
+        self.subdir.mkdir(exist_ok=True)
+        self.obj_output = self.subdir / (self.input_path.stem + ".obj")
 
     def run(self):
         print(f"Running model for input: {safe_relpath(self.input_path)}")
@@ -91,8 +94,11 @@ class MeshConverter:
         self.scale = scale
         base_stem = self.input_glb.stem
         new_stem = f"{base_stem}_faces{target_faces}" if target_faces else base_stem
+        # 出力フォルダとして、新しい stem 名のサブフォルダを作成
+        self.subdir = self.input_glb.parent / new_stem
+        self.subdir.mkdir(exist_ok=True)
         self.output_type = output_type.lower()  # "obj" または "stl"
-        self.output_path = self.input_glb.with_name(new_stem + f".{self.output_type}")
+        self.output_path = self.subdir / (new_stem + f".{self.output_type}")
 
     def convert(self):
         print(f"Converting mesh from: {safe_relpath(self.input_glb)}")
