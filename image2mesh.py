@@ -28,7 +28,7 @@ class Image2MeshConverter:
 
     def run(self):
         self._generate_glb()
-        mesh = self._load_mesh()
+        mesh = self._load_mesh(remove_texture=True)
         self._export_obj(mesh)
 
     def _generate_glb(self):
@@ -59,14 +59,17 @@ class Image2MeshConverter:
         else:
             raise RuntimeError("Failed to download glb file.")
 
-    def _load_mesh(self):
+    def _load_mesh(self, remove_texture: bool):
         try:
             mesh = trimesh.load(str(self.glb_output), force="mesh")
-            # --input モードは常にテクスチャを除去する
-            if hasattr(mesh.visual, "material") and mesh.visual.material is not None:
-                mesh.visual.material.image = None
-            if hasattr(mesh.visual, "uv"):
-                mesh.visual.uv = None
+            if remove_texture:
+                if (
+                    hasattr(mesh.visual, "material")
+                    and mesh.visual.material is not None
+                ):
+                    mesh.visual.material.image = None
+                if hasattr(mesh.visual, "uv"):
+                    mesh.visual.uv = None
             return mesh
         except Exception as e:
             raise RuntimeError(f"Error loading glb with trimesh: {e}")
@@ -94,32 +97,34 @@ class MeshConverter:
         self.target_faces = target_faces
         self.scale = scale
         self.base_stem = self.input_glb.stem
-        # サブフォルダはデフォルトは入力ファイル名の stem のまま
+        # 初期サブフォルダは入力ファイルの stem そのまま
         self.subdir = self.input_glb.parent / self.base_stem
         self.subdir.mkdir(exist_ok=True)
-        self.output_type = output_type.lower()  # "obj" or "stl"
+        self.output_type = output_type.lower()  # "obj" または "stl"
         self.output_path = self.subdir / (self.base_stem + f".{self.output_type}")
 
     def convert(self):
         print(f"Converting mesh from: {safe_relpath(self.input_glb)}")
-        mesh = self._load_mesh()
-        mesh = self._apply_scale(mesh)
+        try:
+            # --faces 未指定ならテクスチャを保持する
+            remove_tex = False if self.target_faces is None else True
+            mesh = self._load_mesh(remove_tex)
+            mesh = self._apply_scale(mesh)
+        except Exception as e:
+            print(e)
+            return
         if self.target_faces is None:
-            ms = self._export_and_load_temp(mesh)
-            face_count = self._get_face_count(ms)
-            self._update_output_name(face_count)
-            self._export_final(ms)
+            self._export_direct(mesh)
         else:
             ms = self._export_and_load_temp(mesh)
             ms = self._decimate(ms)
             self._update_output_name(self.target_faces)
             self._export_final(ms)
 
-    def _load_mesh(self):
+    def _load_mesh(self, remove_texture: bool):
         try:
             mesh = trimesh.load(str(self.input_glb), force="mesh")
-            # --convert モード：faces 指定がない場合はテクスチャを保持する
-            if self.target_faces is not None:
+            if remove_texture:
                 if (
                     hasattr(mesh.visual, "material")
                     and mesh.visual.material is not None
@@ -139,6 +144,16 @@ class MeshConverter:
             except Exception as e:
                 raise RuntimeError(f"Error applying scale: {e}")
         return mesh
+
+    def _export_direct(self, mesh):
+        # 変換のみの場合は、直接 trimesh.export() でOBJ出力
+        face_count = mesh.faces.shape[0] if hasattr(mesh, "faces") else 0
+        self._update_output_name(face_count)
+        try:
+            mesh.export(str(self.output_path))
+            print(f"Mesh saved as: {safe_relpath(self.output_path)}")
+        except Exception as e:
+            print(f"Error exporting mesh: {e}")
 
     def _export_and_load_temp(self, mesh):
         temp_path = Path(tempfile.mktemp(suffix=".ply"))
@@ -195,7 +210,7 @@ class MeshConverter:
             self.subdir = self.input_glb.parent / new_stem
         else:
             new_stem = f"{self.base_stem}_faces{face_count}"
-            # サブフォルダ名は元の stem のまま
+            # サブフォルダは元の stem 名のまま
             self.subdir = self.input_glb.parent / self.base_stem
         self.subdir.mkdir(exist_ok=True)
         self.output_path = self.subdir / (new_stem + f".{self.output_type}")
