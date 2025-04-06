@@ -7,17 +7,20 @@ import trimesh
 import tempfile
 import traceback
 
+
 def safe_relpath(path, base=Path.cwd()):
     try:
         return path.relative_to(base)
     except ValueError:
         return path
 
+
 class Image2MeshConverter:
     """
     画像から Replicate 経由で 3D メッシュ (glb) を生成し、
     同じディレクトリに .glb および .obj ファイルとして保存するクラス。
     """
+
     def __init__(self, input_path: Path):
         self.input_path = input_path.resolve()
         self.glb_output = self.input_path.with_suffix(".glb")
@@ -66,16 +69,26 @@ class Image2MeshConverter:
         except Exception as e:
             print(f"Error exporting obj file: {e}")
 
+
 class MeshConverter:
     """
     既存の glb ファイルを読み込み、指定した形式（obj または stl）に変換・簡略化するクラス。
-    --faces オプションで目標面数を指定すると、テクスチャ情報は除去してジオメトリのみを対象に、
+    --faces オプションで目標面数を指定すると、テクスチャ情報は無視してジオメトリのみを対象に、
     'meshing_decimation_quadric_edge_collapse' フィルターで簡略化を行い、
     出力ファイル名に '_faces{target_faces}' を付加します。
+    また、--scale オプションで指定した倍率を適用して単位変換（例：メートル→ミリメートル）を行います。
     """
-    def __init__(self, input_glb: Path, output_type: str, target_faces: int = None):
+
+    def __init__(
+        self,
+        input_glb: Path,
+        output_type: str,
+        target_faces: int = None,
+        scale: float = 1.0,
+    ):
         self.input_glb = input_glb.resolve()
         self.target_faces = target_faces
+        self.scale = scale
         base_stem = self.input_glb.stem
         new_stem = f"{base_stem}_faces{target_faces}" if target_faces else base_stem
         self.output_type = output_type.lower()  # "obj" または "stl"
@@ -83,49 +96,59 @@ class MeshConverter:
 
     def convert(self):
         print(f"Converting mesh from: {safe_relpath(self.input_glb)}")
-        # if target_faces is provided, perform decimation via pymeshlab
-        if self.target_faces:
-            # 1. テクスチャ情報を除去するため、まず trimesh で読み込む
+        try:
+            mesh = self._load_mesh()
+            mesh = self._apply_scale(mesh)
+            temp_glb = self._export_temp_mesh(mesh)
+            simplified_mesh = self._simplify_mesh(temp_glb)
+            self._export_final_mesh(simplified_mesh)
+        except Exception as e:
+            print(f"Error during conversion: {e}")
+
+    def _load_mesh(self):
+        try:
+            mesh = trimesh.load(str(self.input_glb), force="mesh")
+            if hasattr(mesh.visual, "material") and mesh.visual.material is not None:
+                mesh.visual.material.image = None
+            if hasattr(mesh.visual, "uv"):
+                mesh.visual.uv = None
+            return mesh
+        except Exception as e:
+            raise RuntimeError(f"Error loading mesh with trimesh: {e}")
+
+    def _apply_scale(self, mesh):
+        if self.scale != 1.0:
             try:
-                mesh = trimesh.load(str(self.input_glb), force="mesh")
-                # 除去: UV やカラー情報
-                if hasattr(mesh.visual, "material") and mesh.visual.material is not None:
-                    mesh.visual.material.image = None
-                if hasattr(mesh.visual, "uv"):
-                    mesh.visual.uv = None
+                print(f"Applying scale factor of {self.scale} to mesh...")
+                mesh.apply_scale(self.scale)
             except Exception as e:
-                print(f"Error loading mesh with trimesh: {e}")
-                return
+                raise RuntimeError(f"Error applying scale factor: {e}")
+        return mesh
 
-            # 2. 一時ファイルとして、テクスチャなしの PLY 形式にエクスポート（PLY はテクスチャ情報を持たない）
-            temp_glb = Path(tempfile.mktemp(suffix=".ply"))
-            try:
-                mesh.export(str(temp_glb))
-                print(f"Temporary mesh without texture saved as: {safe_relpath(temp_glb)}")
-            except Exception as e:
-                print(f"Error exporting temporary mesh: {e}")
-                return
+    def _export_temp_mesh(self, mesh):
+        temp_glb = Path(tempfile.mktemp(suffix=".ply"))
+        try:
+            mesh.export(str(temp_glb))
+            print(f"Temporary mesh without texture saved as: {safe_relpath(temp_glb)}")
+            return temp_glb
+        except Exception as e:
+            raise RuntimeError(f"Error exporting temporary mesh: {e}")
 
-            # 3. pymeshlab を用いて簡略化処理を実行
-            try:
-                import pymeshlab as ml
-            except ImportError:
-                print("pymeshlab is not installed; cannot perform decimation.")
-                return
+    def _simplify_mesh(self, temp_glb):
+        try:
+            import pymeshlab as ml
+        except ImportError:
+            raise RuntimeError("pymeshlab is not installed; cannot perform decimation.")
 
-            try:
-                ms = ml.MeshSet()
-                ms.load_new_mesh(str(temp_glb))
-            except Exception as e:
-                print(f"Error loading temporary mesh into pymeshlab: {e}")
-                return
-
-            try:
-                print(f"Simplifying mesh to {self.target_faces} faces (texture discarded)...")
+        try:
+            ms = ml.MeshSet()
+            ms.load_new_mesh(str(temp_glb))
+            if self.target_faces:
+                print(f"Simplifying mesh to {self.target_faces} faces...")
                 ms.apply_filter(
-                    'meshing_decimation_quadric_edge_collapse',
+                    "meshing_decimation_quadric_edge_collapse",
                     targetfacenum=self.target_faces,
-                    targetperc=0.0,         # 正確な面数目標
+                    targetperc=0.0,
                     qualitythr=0.3,
                     preserveboundary=True,
                     boundaryweight=1.0,
@@ -133,45 +156,33 @@ class MeshConverter:
                     preservenormal=True,
                     preservetopology=True,
                     planarquadric=True,
-                    selected=False
+                    selected=False,
                 )
-                ms.save_current_mesh(str(self.output_path))
-                print(f"Mesh saved as: {safe_relpath(self.output_path)}")
-            except Exception as e:
-                print(f"Error during mesh simplification: {e}")
-                try:
-                    print("Available filters:")
-                    ms.print_filter_script()
-                except Exception as ex:
-                    print("Error printing filter script:", ex)
-            finally:
-                try:
-                    temp_glb.unlink()
-                except Exception as e:
-                    print(f"Warning: failed to remove temporary file: {e}")
-        else:
-            # 単純な形式変換のみの場合
+            return ms
+        except Exception as e:
+            raise RuntimeError(f"Error during mesh simplification: {e}")
+        finally:
             try:
-                mesh = trimesh.load(str(self.input_glb), force="mesh")
+                temp_glb.unlink()
             except Exception as e:
-                print(f"Error loading glb file with trimesh: {e}")
-                return
-            if mesh is None:
-                print("Failed to load the glb file with trimesh.")
-                return
-            try:
-                mesh.export(str(self.output_path))
-                print(f"Mesh saved as: {safe_relpath(self.output_path)}")
-            except Exception as e:
-                print(f"Error exporting mesh file: {e}")
+                print(f"Warning: failed to remove temporary file: {e}")
+
+    def _export_final_mesh(self, ms):
+        try:
+            ms.save_current_mesh(str(self.output_path))
+            print(f"Mesh saved as: {safe_relpath(self.output_path)}")
+        except Exception as e:
+            raise RuntimeError(f"Error exporting final mesh: {e}")
+
 
 def main():
     parser = argparse.ArgumentParser(
         description="Hunyuan3D-2 の 3D メッシュ生成・変換ツール。\n"
-                    "・--input を指定すると、画像からメッシュ生成を行い、.glb および .obj ファイルとして保存します。\n"
-                    "・--convert を指定すると、既存の glb ファイルを指定した形式（obj または stl）に変換・簡略化します。\n"
-                    "   --faces オプションで目標面数を指定すると、出力ファイル名に '_faces{値}' を付加します。\n"
-                    "※ テクスチャ情報は保持せず、ジオメトリのみを対象に処理します。"
+        "・--input を指定すると、画像からメッシュ生成を行い、.glb および .obj ファイルとして保存します。\n"
+        "・--convert を指定すると、既存の glb ファイルを指定した形式（obj または stl）に変換・簡略化します。\n"
+        "   --faces オプションで目標面数を指定すると、出力ファイル名に '_faces{値}' を付加します。\n"
+        "   --scale オプションでスケールファクターを指定すると、単位変換（例：メートル→ミリメートル）が行われます。\n"
+        "※ glTF (glb) には明示的な単位情報は含まれていません。通常はメートル単位と仮定されるため、Fusion360 で mm として扱うには 1000 倍の変換が必要です。"
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
@@ -197,14 +208,21 @@ def main():
         default=None,
         help="目標面数を指定します (例: 10000)。指定された場合、簡略化処理を行い、出力ファイル名に '_faces{値}' を付加します。",
     )
+    parser.add_argument(
+        "--scale",
+        type=float,
+        default=1000,
+        help="スケールファクターを指定します。glb は通常メートル単位ですが、Fusion360 で mm 単位で利用する場合は 1000 を指定 (デフォルト: 1000)。",
+    )
     args = parser.parse_args()
 
     if args.input:
         converter = Image2MeshConverter(args.input)
         converter.run()
     elif args.convert:
-        converter = MeshConverter(args.convert, args.type, args.faces)
+        converter = MeshConverter(args.convert, args.type, args.faces, args.scale)
         converter.convert()
+
 
 if __name__ == "__main__":
     main()
