@@ -6,6 +6,13 @@ from pathlib import Path
 import trimesh
 
 
+def safe_relpath(path, base = Path.cwd()):
+    try:
+        return path.relative_to(base)
+    except ValueError:
+        return path
+
+
 class Image2MeshConverter:
     def __init__(self, input_path: Path):
         # 入力画像の絶対パスを取得
@@ -16,7 +23,7 @@ class Image2MeshConverter:
 
     def run(self):
         # 入力画像ファイルをバイナリモードでオープンし、replicate.run に直接渡す
-        print(f"Running model for input: {self.input_path}")
+        print(f"Running model for input: {safe_relpath(self.input_path)}")
         with open(self.input_path, "rb") as image:
             output = replicate.run(
                 "ndreca/hunyuan3d-2:5d49aec561e36dc75360fad7117e8a46c7700df3070f1d24ff28509160e5f089",
@@ -45,7 +52,7 @@ class Image2MeshConverter:
             with open(self.glb_output, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
-            print(f"GLB file saved as: {self.glb_output}")
+            print(f"GLB file saved as: {safe_relpath(self.glb_output)}")
         else:
             print("Failed to download the glb file.")
             return
@@ -63,7 +70,7 @@ class Image2MeshConverter:
 
         try:
             mesh.export(str(self.obj_output))
-            print(f"OBJ file saved as: {self.obj_output}")
+            print(f"OBJ file saved as: {safe_relpath(self.obj_output)}")
         except Exception as e:
             print(f"Error exporting obj file: {e}")
 
