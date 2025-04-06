@@ -93,7 +93,7 @@ class MeshConverter:
         self.target_faces = target_faces
         self.scale = scale
         self.base_stem = self.input_glb.stem
-        # 初期サブフォルダは入力ファイルの stem のまま
+        # 初期サブフォルダは入力ファイル名の stem そのまま
         self.subdir = self.input_glb.parent / self.base_stem
         self.subdir.mkdir(exist_ok=True)
         self.output_type = output_type.lower()  # "obj" または "stl"
@@ -103,15 +103,16 @@ class MeshConverter:
         print(f"Converting mesh from: {safe_relpath(self.input_glb)}")
         mesh = self._load_mesh()
         mesh = self._apply_scale(mesh)
-        if self.target_faces:
+        if self.target_faces is None:
             ms = self._export_and_load_temp(mesh)
-            ms = self._decimate(ms)
+            face_count = self._get_face_count(ms)
+            self._update_output_name(face_count)
+            self._export_final(ms)
         else:
             ms = self._export_and_load_temp(mesh)
-            # decimationなしの場合、face数を取得
-        face_count = self._get_face_count(ms)
-        self._update_output_name(face_count)
-        self._export_final(ms)
+            ms = self._decimate(ms)
+            self._update_output_name(self.target_faces)
+            self._export_final(ms)
 
     def _load_mesh(self):
         try:
@@ -122,7 +123,7 @@ class MeshConverter:
                 mesh.visual.uv = None
             return mesh
         except Exception as e:
-            raise RuntimeError(f"Error loading mesh with trimesh: {e}")
+            raise RuntimeError(f"Error loading mesh: {e}")
 
     def _apply_scale(self, mesh):
         if self.scale != 1.0:
@@ -185,9 +186,11 @@ class MeshConverter:
     def _update_output_name(self, face_count: int):
         if self.target_faces:
             new_stem = f"{self.base_stem}_faces{self.target_faces}"
+            self.subdir = self.input_glb.parent / new_stem
         else:
+            # フォルダ名は元の stem のままで、ファイル名に face_count を付加
             new_stem = f"{self.base_stem}_faces{face_count}"
-        self.subdir = self.input_glb.parent / new_stem
+            self.subdir = self.input_glb.parent / self.base_stem
         self.subdir.mkdir(exist_ok=True)
         self.output_path = self.subdir / (new_stem + f".{self.output_type}")
 
@@ -205,8 +208,8 @@ class MeshConverter:
 def main():
     parser = argparse.ArgumentParser(
         description="Hunyuan3D-2 の 3D メッシュ生成・変換ツール。\n"
-        "・--input: 画像からメッシュ生成。GLBはカレントフォルダ、OBJは入力ファイル名のサブフォルダに保存。\n"
-        "・--convert: 既存GLBを変換・簡略化。--faces 指定時は decimation、指定なしは変換のみで実際の面数をファイル名に反映。\n"
+        "・--input: 画像からメッシュ生成。GLBはカレントフォルダに、OBJは入力ファイル名のサブフォルダに保存します。\n"
+        "・--convert: 既存GLBを変換・簡略化。--faces 指定時は decimation、指定しない場合は変換のみで実際の面数をファイル名に反映します。\n"
         "--scale: 単位変換 (例: メートル→mm、デフォルト1000)。"
     )
     group = parser.add_mutually_exclusive_group(required=True)
@@ -229,7 +232,7 @@ def main():
         "--faces",
         type=int,
         default=None,
-        help="目標面数 (例: 10000)。指定時は decimation、指定しない場合は変換のみで実際の面数を使用。",
+        help="目標面数 (例: 10000)。指定時は decimation、指定しない場合は実際の面数を使用。",
     )
     parser.add_argument(
         "--scale",
