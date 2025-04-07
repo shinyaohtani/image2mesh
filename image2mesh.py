@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
+from pathlib import Path
 import argparse
 import replicate
 import requests
-from pathlib import Path
-import trimesh
 import tempfile
 import traceback
+import trimesh
 
 
 def safe_relpath(path, base=Path.cwd()):
