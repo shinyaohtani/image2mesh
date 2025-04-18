@@ -21,9 +21,11 @@ def safe_relpath(path, base=Path.cwd()):
 class Image2MeshConverter:
     def __init__(self, input_path: Path):
         self.input_path = input_path.resolve()
-        self.glb_output = self.input_path.with_suffix(".glb")
+        # 出力用のサブフォルダを予め作成
         self.subdir = self.input_path.parent / self.input_path.stem
         self.subdir.mkdir(exist_ok=True)
+        # GLBの出力先を subdir に変更
+        self.glb_output = self.subdir / (self.input_path.stem + ".glb")
         self.obj_output = self.subdir / (self.input_path.stem + ".obj")
 
     def run(self):
