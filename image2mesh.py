@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import replicate
 import requests
+import shutil
 import tempfile
 import traceback
 import trimesh
@@ -27,6 +28,11 @@ class Image2MeshConverter:
         # GLBの出力先を subdir に変更
         self.glb_output = self.subdir / (self.input_path.stem + ".glb")
         self.obj_output = self.subdir / (self.input_path.stem + ".obj")
+        # 画像ファイルをサブフォルダにコピー
+        shutil.copy2(self.input_path, self.subdir / self.input_path.name)
+        print(
+            f"Copied original image to: {safe_relpath(self.subdir / self.input_path.name)}"
+        )
 
     def run(self):
         self._generate_glb()
