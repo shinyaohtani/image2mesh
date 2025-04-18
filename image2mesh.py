@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import argparse
+import os
 import replicate
 import requests
 import shutil
@@ -11,9 +12,9 @@ import trimesh
 
 def safe_relpath(path, base=Path.cwd()):
     try:
-        return path.relative_to(base)
+        return str(Path(path).resolve().relative_to(base.resolve()))
     except ValueError:
-        return path
+        return str(path)
 
 
 ########################################
@@ -275,12 +276,13 @@ def main():
     )
     args = parser.parse_args()
     if args.input:
-        converter = Image2MeshConverter(args.input)
+        input_path = Path(os.path.expanduser(str(args.input)))
+        converter = Image2MeshConverter(input_path)
         converter.run()
     elif args.convert:
-        converter = MeshConverter(args.convert, args.type, args.faces, args.scale)
+        convert_path = Path(os.path.expanduser(str(args.convert)))
+        converter = MeshConverter(convert_path, args.type, args.faces, args.scale)
         converter.convert()
-
 
 if __name__ == "__main__":
     main()
