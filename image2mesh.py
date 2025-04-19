@@ -10,7 +10,7 @@ import traceback
 import trimesh
 
 
-def safe_relpath(path, base=Path.cwd()):
+def safe_relpath(path, base=Path.home()):
     try:
         return str(Path(path).resolve().relative_to(base.resolve()))
     except ValueError:
@@ -35,7 +35,7 @@ class Image2MeshConverter:
 
     def run(self):
         self._generate_glb()
-        mesh = self._load_mesh(remove_texture=True)
+        mesh = self._load_mesh(remove_texture=False)
         self._export_obj(mesh)
 
     def _generate_glb(self):
