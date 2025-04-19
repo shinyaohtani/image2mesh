@@ -10,11 +10,20 @@ import traceback
 import trimesh
 
 
-def safe_relpath(path, base=Path.home()):
+def safe_relpath(path: Path, base=Path.cwd()) -> str:
+
+    def my_str(mypath: Path) -> str:
+        if mypath.is_absolute():
+            try:
+                return f"~/{mypath.relative_to(Path.home())}"
+            except ValueError:
+                return str(mypath)
+        return str(mypath)
+
     try:
-        return str(Path(path).resolve().relative_to(base.resolve()))
+        return my_str(Path(path).resolve().relative_to(base.resolve()))
     except ValueError:
-        return str(path)
+        return my_str(path)
 
 
 ########################################
@@ -281,6 +290,7 @@ def main():
         convert_path = Path(os.path.expanduser(str(args.convert)))
         converter = MeshConverter(convert_path, args.type, args.faces, args.scale)
         converter.convert()
+
 
 if __name__ == "__main__":
     main()
