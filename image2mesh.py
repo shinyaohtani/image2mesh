@@ -281,8 +281,8 @@ def main():
     parser.add_argument(
         "--scale",
         type=float,
-        default=1000,
-        help="スケールファクター (例: 1000 for m→mm, デフォルト: 1000)。",
+        default=100,
+        help="スケールファクター (例: 100 for m→cm, デフォルト: 100)。",
     )
     args = parser.parse_args()
     if args.input:
