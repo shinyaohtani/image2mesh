@@ -15,10 +15,11 @@ def safe_relpath(path: Path, base=Path.cwd()) -> str:
     def my_str(mypath: Path) -> str:
         if mypath.is_absolute():
             try:
-                return f"~/{mypath.relative_to(Path.home())}"
+                p = mypath.relative_to(Path.home())
+                return "~/" if str(p) == "." else f"~/{p}"
             except ValueError:
                 return str(mypath)
-        return str(mypath)
+        return f"./{mypath}"
 
     try:
         return my_str(Path(path).resolve().relative_to(base.resolve()))
