@@ -31,8 +31,9 @@ def safe_relpath(path: Path, base=Path.cwd()) -> str:
 # Image2MeshConverter: 画像→メッシュ生成
 ########################################
 class Image2MeshConverter:
-    def __init__(self, input_path: Path):
+    def __init__(self, input_path: Path, scale: float = 1.0):
         self.input_path = input_path.resolve()
+        self.scale = scale
         # 出力用のサブフォルダを予め作成
         self.subdir = self.input_path.parent / self.input_path.stem
         self.subdir.mkdir(exist_ok=True)
@@ -46,6 +47,7 @@ class Image2MeshConverter:
     def run(self):
         self._generate_glb()
         mesh = self._load_mesh(remove_texture=False)
+        mesh.apply_scale(self.scale)
         self._export_obj(mesh)
 
     def _generate_glb(self):
@@ -285,7 +287,7 @@ def main():
     args = parser.parse_args()
     if args.input:
         input_path = Path(os.path.expanduser(str(args.input)))
-        converter = Image2MeshConverter(input_path)
+        converter = Image2MeshConverter(input_path, args.scale)
         converter.run()
     elif args.convert:
         convert_path = Path(os.path.expanduser(str(args.convert)))
